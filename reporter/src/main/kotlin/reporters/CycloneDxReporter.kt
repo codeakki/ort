@@ -244,9 +244,9 @@ class CycloneDxReporter : Reporter {
     }
 
     private fun writeBomToFile(bom: Bom, outputFile: File) {
-        val bomGenerator = BomGeneratorFactory.createXml(CycloneDxSchema.Version.VERSION_11, bom).apply { generate() }
+        val bomGenerator = BomGeneratorFactory.createXml(CycloneDxSchema.Version.VERSION_11, bom)
         outputFile.bufferedWriter().use {
-            it.write(bomGenerator.toXmlString())
+            it.write(bomGenerator.toString())
         }
     }
 }
