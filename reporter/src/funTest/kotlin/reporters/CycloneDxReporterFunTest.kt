@@ -37,10 +37,10 @@ import org.ossreviewtoolkit.utils.ORT_NAME
 class CycloneDxReporterFunTest : StringSpec({
     val options = mapOf("single.bom" to "true")
 
-    "A generated BOM should be valid according to schema version 1.1" {
+    "A generated BOM should be valid according to schema version 1.2" {
         val outputDir = createTempDirectory("$ORT_NAME-${javaClass.simpleName}").toFile().apply { deleteOnExit() }
         val bomFile = CycloneDxReporter().generateReport(ReporterInput(ORT_RESULT), outputDir, options).single()
 
-        XmlParser().validate(bomFile, CycloneDxSchema.Version.VERSION_11) should beEmpty()
+        XmlParser().validate(bomFile, CycloneDxSchema.Version.VERSION_12) should beEmpty()
     }
 })
