@@ -35,6 +35,7 @@ import org.cyclonedx.model.Hash
 import org.cyclonedx.model.License
 import org.cyclonedx.model.LicenseChoice
 
+import org.ossreviewtoolkit.model.FileFormat
 import org.ossreviewtoolkit.model.LicenseSource
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Project
@@ -45,9 +46,6 @@ import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.spdx.SpdxLicense
 import org.ossreviewtoolkit.utils.ORT_NAME
 import org.ossreviewtoolkit.utils.isFalse
-
-private const val REPORT_BASE_FILENAME = "CycloneDX-BOM"
-private const val REPORT_EXTENSION = "xml"
 
 /**
  * A [Reporter] that creates software bills of materials (SBOM) in the [CycloneDX][1] format. For each [Project]
@@ -61,7 +59,10 @@ private const val REPORT_EXTENSION = "xml"
  */
 class CycloneDxReporter : Reporter {
     companion object {
+        const val REPORT_BASE_FILENAME = "CycloneDX-BOM"
+
         const val OPTION_SINGLE_BOM = "single.bom"
+        const val OPTION_OUTPUT_FILE_FORMATS = "output.file.formats"
     }
 
     override val reporterName = "CycloneDx"
@@ -106,11 +107,12 @@ class CycloneDxReporter : Reporter {
         val outputFiles = mutableListOf<File>()
         val projects = input.ortResult.getProjects(omitExcluded = true)
         val createSingleBom = !options[OPTION_SINGLE_BOM].isFalse()
+        val outputFileFormats = options[OPTION_OUTPUT_FILE_FORMATS]
+            ?.split(",")
+            ?.mapTo(mutableSetOf()) { FileFormat.valueOf(it.toUpperCase()) }
+            ?: setOf(FileFormat.XML)
 
         if (createSingleBom) {
-            val reportFilename = "$REPORT_BASE_FILENAME.$REPORT_EXTENSION"
-            val outputFile = outputDir.resolve(reportFilename)
-
             val bom = Bom().apply { serialNumber = "urn:uuid:${UUID.randomUUID()}" }
 
             // In case of multiple projects it is not always clear for which project to create the BOM:
@@ -138,13 +140,9 @@ class CycloneDxReporter : Reporter {
                 addPackageToBom(input, pkg, bom, dependencyType)
             }
 
-            writeBomToFile(bom, outputFile)
-            outputFiles += outputFile
+            outputFiles += writeBom(bom, outputDir, REPORT_BASE_FILENAME, outputFileFormats)
         } else {
             projects.forEach { project ->
-                val reportFilename = "$REPORT_BASE_FILENAME-${project.id.toPath("-")}.$REPORT_EXTENSION"
-                val outputFile = outputDir.resolve(reportFilename)
-
                 val bom = Bom().apply { serialNumber = "urn:uuid:${UUID.randomUUID()}" }
 
                 // Add information about projects as external references at the BOM level.
@@ -180,8 +178,8 @@ class CycloneDxReporter : Reporter {
                     addPackageToBom(input, pkg, bom, dependencyType)
                 }
 
-                writeBomToFile(bom, outputFile)
-                outputFiles += outputFile
+                val reportName = "$REPORT_BASE_FILENAME-${project.id.toPath("-")}"
+                outputFiles += writeBom(bom, outputDir, reportName, outputFileFormats)
             }
         }
 
@@ -243,11 +241,24 @@ class CycloneDxReporter : Reporter {
         bom.addComponent(component)
     }
 
-    private fun writeBomToFile(bom: Bom, outputFile: File) {
-        val bomGenerator = BomGeneratorFactory.createXml(CycloneDxSchema.Version.VERSION_12, bom)
-        outputFile.bufferedWriter().use {
-            it.write(bomGenerator.toString())
+    private fun writeBom(bom: Bom, outputDir: File, outputName: String, outputFileFormats: Set<FileFormat>): List<File> {
+        val writtenFiles = mutableListOf<File>()
+
+        outputFileFormats.forEach { fileFormat ->
+            val outputFile = outputDir.resolve("$outputName.${fileFormat.fileExtension}")
+
+            val bomGenerator = when (fileFormat) {
+                // Note that the BomXmlGenerator and BomJsonGenerator interfaces do not share a common base interface.
+                FileFormat.XML -> BomGeneratorFactory.createXml(CycloneDxSchema.Version.VERSION_12, bom) as Any
+                FileFormat.JSON -> BomGeneratorFactory.createJson(CycloneDxSchema.Version.VERSION_12, bom) as Any
+                else -> throw IllegalArgumentException("Unsupported CycloneDX file format '$fileFormat'.")
+            }
+
+            outputFile.bufferedWriter().use { it.write(bomGenerator.toString()) }
+            writtenFiles += outputFile
         }
+
+        return writtenFiles
     }
 }
 

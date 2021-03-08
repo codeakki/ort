@@ -23,7 +23,10 @@ package org.ossreviewtoolkit.reporter.reporters
 import io.kotest.core.spec.style.StringSpec
 
 import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.file.aFile
+import io.kotest.matchers.longs.beGreaterThan
 import io.kotest.matchers.should
+import io.kotest.matchers.shouldBe
 
 import kotlin.io.path.createTempDirectory
 
@@ -36,11 +39,19 @@ import org.ossreviewtoolkit.utils.ORT_NAME
 
 class CycloneDxReporterFunTest : StringSpec({
     val options = mapOf("single.bom" to "true")
+    val outputDir = createTempDirectory("$ORT_NAME-${javaClass.simpleName}").toFile().apply { deleteOnExit() }
 
-    "A generated BOM should be valid according to schema version 1.2" {
-        val outputDir = createTempDirectory("$ORT_NAME-${javaClass.simpleName}").toFile().apply { deleteOnExit() }
+    "A generated BOM in XML format should be valid according to schema version 1.2" {
         val bomFile = CycloneDxReporter().generateReport(ReporterInput(ORT_RESULT), outputDir, options).single()
 
         XmlParser().validate(bomFile, CycloneDxSchema.Version.VERSION_12) should beEmpty()
+    }
+
+    "A generated BOM should export correctly to JSON format" {
+        val jsonOptions = options + mapOf("output.file.formats" to "json")
+        val bomFile = CycloneDxReporter().generateReport(ReporterInput(ORT_RESULT), outputDir, jsonOptions).single()
+
+        bomFile shouldBe aFile()
+        bomFile.length() shouldBe beGreaterThan(0)
     }
 })
